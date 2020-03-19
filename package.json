@@ -1,0 +1,24 @@
+{
+  "name": "incremental_pca",
+  "version": "1.0.0",
+  "description": "JS implementation of Incremental PCA algorithm",
+  "main": "src/incremental_pca.js",
+  "scripts": {
+    "test": "gulp test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berlm/incremental_pca.git"
+  },
+  "keywords": [
+    "pca",
+    "dimensionality_reduction",
+    "js"
+  ],
+  "author": "Mikhail Berlinkov",
+  "license": "BSD-3-Clause",
+  "bugs": {
+    "url": "https://github.com/berlm/incremental_pca/issues"
+  },
+  "homepage": "https://github.com/berlm/incremental_pca#readme"
+}
