@@ -54,36 +54,36 @@ export async function incremental_mean_and_var(X, last_mean, last_variance, last
     // # old = stats until now
     // # new = the current increment
     // # updated = the aggregated stats
-    const last_sum = last_mean.mul(last_sample_count);
-    const new_sum = X.sum(0);
+    return tf.tidy(() => {
+        const last_sum = last_mean.mul(last_sample_count);
+        const new_sum = X.sum(0);
 
-    const new_sample_count = tf.isNaN(X).neg().sum(0);
-    const updated_sample_count = last_sample_count.add(new_sample_count);
+        const new_sample_count = tf.isNaN(X).neg().sum(0);
+        const updated_sample_count = last_sample_count.add(new_sample_count);
 
-    const updated_mean = last_sum.add(new_sum).div(updated_sample_count);
-    let updated_variance;
+        const updated_mean = last_sum.add(new_sum).div(updated_sample_count);
+        let updated_variance;
 
-    if (last_variance !== undefined) {
-        const new_unnormalized_variance = tf.pow(X, 2).mean(0).mul(new_sample_count);
-        const last_unnormalized_variance = last_variance.mul(last_sample_count);
+        if (last_variance !== undefined) {
+            const new_unnormalized_variance = tf.pow(X, 2).mean(0).mul(new_sample_count);
+            const last_unnormalized_variance = last_variance.mul(last_sample_count);
 
-        // with np.errstate(divide='ignore', invalid='ignore'):
-        const last_over_new_count = last_sample_count.div(new_sample_count);
-        let updated_unnormalized_variance = last_unnormalized_variance
-            .add(new_unnormalized_variance)
-            .add(last_sum
-                .div(last_over_new_count)
-                .sub(new_sum)
-                .pow(2)
-                .mul(last_over_new_count.div(updated_sample_count))
-            );
+            // with np.errstate(divide='ignore', invalid='ignore'):
+            const last_over_new_count = last_sample_count.div(new_sample_count);
+            let updated_unnormalized_variance = last_unnormalized_variance
+                .add(new_unnormalized_variance)
+                .add(last_sum
+                    .div(last_over_new_count)
+                    .sub(new_sum)
+                    .pow(2)
+                    .mul(last_over_new_count.div(updated_sample_count))
+                );
 
-        const zeros = last_sample_count.equal(0);
-        updated_unnormalized_variance[zeros] = new_unnormalized_variance[zeros];
-        updated_variance = tf.where(last_sample_count.equal(0), new_unnormalized_variance, updated_unnormalized_variance).div(updated_sample_count);
-    }
+            updated_variance = tf.where(last_sample_count.equal(0), new_unnormalized_variance, updated_unnormalized_variance).div(updated_sample_count);
+        }
 
-    return { updated_mean, updated_variance, updated_sample_count };
+        return { updated_mean, updated_variance, updated_sample_count };
+    });
 }
 
 class IncrementalPCA {
@@ -252,8 +252,8 @@ class IncrementalPCA {
             self : object
             Returns the instance itself.
          */
-        X = np.array(X);
         let self = this;
+        X = tf.tensor(X);
         self.n_samples_seen_ = 0;
         self.mean_ = 0.0;
         self.var_ = 0.0;
@@ -269,14 +269,13 @@ class IncrementalPCA {
         }
 
         for (let batch of gen_batches(n_samples, self.batch_size_, self.n_components || 0)) {
-            await self.partial_fit(X[batch]);
+            await self.partial_fit(X.slice(batch));
         }
-
+        tf.dispose(X);
         return self;
     }
 
     async partial_fit(X) {
-        // todo: rewrite with tensorflow
         /* Incremental fit with X. All of X is processed as a single batch.
     
         Parameters
@@ -295,8 +294,9 @@ class IncrementalPCA {
             Returns the instance itself.
         */
         let self = this;
-        n_samples = X.length;
-        n_features = X[0].length;
+        X = tf.tensor(X);
+        n_samples = X.shape[0];
+        n_features = X.shape[1];
 
         if (self.n_components === undefined) {
             if (self.components_ === undefined) {
@@ -328,28 +328,26 @@ class IncrementalPCA {
 
         // Update stats - they are 0; if this is the fisrt step
         let { col_mean, col_var, n_total_samples } = await incremental_mean_and_var(
-            X, last_mean = self.mean_, last_variance = self.var_,
-            last_sample_count = np.repeat(self.n_samples_seen_, X.shape[1])
+            X, self.mean_, self.var_,
+            tf.fill(self.n_samples_seen_, n_features)
         );
-        n_total_samples = n_total_samples[0];
+        n_total_samples = await n_total_samples.array()[0];
 
         // Whitening
         if (self.n_samples_seen_ === 0) {
             // # If it is the first step, simply whiten X
-            X -= col_mean;
+            X = X.sub(col_mean);
         }
         else {
-            col_batch_mean = np.mean(X, axis = 0);
-            X -= col_batch_mean;
+            const col_batch_mean = X.mean(0);
+            X = X.sub(col_batch_mean);
             // # Build matrix of combined previous basis and new data
-            mean_correction = np.sqrt((self.n_samples_seen_ * n_samples) /
-                n_total_samples) * (self.mean_ - col_batch_mean);
-            X = np.vstack((self.singular_values_.reshape((-1, 1)) *
-                self.components_, X, mean_correction));
+            const mean_correction = tf.sqrt(tf.mul(self.n_samples_seen_, n_samples/n_total_samples)).mul(self.mean_.sub(col_batch_mean));
+            X = tf.concat([self.singular_values_.reshape((-1, 1)) * self.components_, X, mean_correction], 1);
         }
-
-        U, S, V = linalg.svd(X, full_matrices = false);
-        U, V = svd_flip(U, V, u_based_decision = false);
+        let { U, V, S } = SVD(await X.array(), true, true);
+        // U, S, V = linalg.svd(X, full_matrices = false);
+        U, V = svd_flip(U, V, false);
         explained_variance = S ** 2 / (n_total_samples - 1);
         explained_variance_ratio = S ** 2 / np.sum(col_var * n_total_samples);
 
