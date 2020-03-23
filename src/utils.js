@@ -1,11 +1,8 @@
-
-
-
-export function slice(start, end) {
+function slice(start, end) {
     return Array.apply(null, { length: end - start }).map(Number.call, function (n) { return n + start; });
 }
 
-export function* gen_batches(n, batch_size, min_batch_size = 0) {
+function* gen_batches(n, batch_size, min_batch_size = 0) {
     /* Generator to create slices containing batch_size elements, from 0 to n.
 
     The last slice may contain less than batch_size elements, when batch_size
@@ -50,3 +47,8 @@ export function* gen_batches(n, batch_size, min_batch_size = 0) {
         yield slice(start, n);
     }
 }
+
+module.exports = {
+    slice,
+    gen_batches,
+} 

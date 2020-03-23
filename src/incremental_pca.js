@@ -1,11 +1,11 @@
-import * as tf from "@tensorflow/tfjs-node";
-import * as utils from "./utils";
-import { SVD } from 'svd-js';
+const tf = require("@tensorflow/tfjs-node");
+const utils = require("./utils");
+const SVD = require('svd-js').SVD;
 
 // Incremental Principal Components Analysis.
 // License: BSD 3 clause
 
-export async function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count) {
+async function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count) {
     /* """Calculate mean update and a Youngs and Cramer variance update.
 
     last_mean and last_variance are statistics computed at the last step by the
@@ -83,6 +83,34 @@ export async function incremental_mean_and_var(X, last_mean, last_variance, last
         }
 
         return { updated_mean, updated_variance, updated_sample_count };
+    });
+}
+
+async function svd_flip(u, v) {
+    /* Sign correction to ensure deterministic output from SVD.
+    Adjusts the columns of u and the rows of v such that the loadings in the
+    columns in u that are largest in absolute value are always positive.
+    Parameters
+    ----------
+    u : ndarray
+        u and v are the output of `linalg.svd` or
+        :func:`~sklearn.utils.extmath.randomized_svd`, with matching inner
+        dimensions so one can compute `np.dot(u * s, v)`.
+    v : ndarray
+        u and v are the output of `linalg.svd` or
+        :func:`~sklearn.utils.extmath.randomized_svd`, with matching inner
+        dimensions so one can compute `np.dot(u * s, v)`.
+    Returns
+    -------
+    u_adjusted, v_adjusted : arrays with the same dimensions as the input.
+    */
+    // # rows of v, columns of u
+    return tf.tidy(() => {
+        const max_abs_rows = tf.argMax(tf.abs(v), 1);
+        const signs = tf.sign(v.slice(utils.slice(0, v.shape[0]), max_abs_rows));
+        u = u.mul(signs);
+        v = v.mul(signs);
+        return { u, v };
     });
 }
 
@@ -259,8 +287,8 @@ class IncrementalPCA {
         self.var_ = 0.0;
 
         // X = check_array(X, copy = self.copy, dtype = [np.float64, np.float32]);
-        n_samples = X.shape[0];
-        n_features = X.shape[1];
+        const n_samples = X.shape[0];
+        const n_features = X.shape[1];
 
         if (self.batch_size === undefined) {
             self.batch_size_ = 5 * n_features;
@@ -268,7 +296,7 @@ class IncrementalPCA {
             self.batch_size_ = self.batch_size;
         }
 
-        for (let batch of gen_batches(n_samples, self.batch_size_, self.n_components || 0)) {
+        for (let batch of utils.gen_batches(n_samples, self.batch_size_, self.n_components || 0)) {
             await self.partial_fit(X.slice(batch));
         }
         tf.dispose(X);
@@ -403,4 +431,8 @@ class IncrementalPCA {
             return X_transformed;
         }).array();
     }
+}
+
+module.exports = {
+    IncrementalPCA,
 }
