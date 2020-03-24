@@ -35,15 +35,14 @@ function* gen_batches(n, batch_size, min_batch_size = 0) {
      */
     let start = 0, end = 0;
     for (let i = 0; i < n / batch_size; i++) {
-        let end = start + batch_size;
-        if (end + min_batch_size > n) {
+        end += batch_size;
+        if (end - start < min_batch_size) {
             continue;
         }
         yield slice(start, end);
+        start = end;
     }
-
-    start = end;
-    if (start < n) {
+    if (n - start >= min_batch_size) {
         yield slice(start, n);
     }
 }
@@ -51,4 +50,4 @@ function* gen_batches(n, batch_size, min_batch_size = 0) {
 module.exports = {
     slice,
     gen_batches,
-} 
+};

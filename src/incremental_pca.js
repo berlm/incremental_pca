@@ -58,7 +58,7 @@ async function incremental_mean_and_var(X, last_mean, last_variance, last_sample
         const last_sum = last_mean.mul(last_sample_count);
         const new_sum = X.sum(0);
 
-        const new_sample_count = tf.isNaN(X).neg().sum(0);
+        const new_sample_count = tf.isFinite(X).sum(0);
         const updated_sample_count = last_sample_count.add(new_sample_count);
 
         const updated_mean = last_sum.add(new_sum).div(updated_sample_count);
@@ -283,8 +283,8 @@ class IncrementalPCA {
         let self = this;
         X = tf.tensor(X);
         self.n_samples_seen_ = 0;
-        self.mean_ = 0.0;
-        self.var_ = 0.0;
+        self.mean_ = tf.scalar(0.0);
+        self.var_ = tf.scalar(0.0);
 
         // X = check_array(X, copy = self.copy, dtype = [np.float64, np.float32]);
         const n_samples = X.shape[0];
@@ -293,11 +293,11 @@ class IncrementalPCA {
         if (self.batch_size === undefined) {
             self.batch_size_ = 5 * n_features;
         } else {
-            self.batch_size_ = self.batch_size;
+            self.batch_size_ = Math.max(self.batch_size, n_features);
         }
 
         for (let batch of utils.gen_batches(n_samples, self.batch_size_, self.n_components || 0)) {
-            await self.partial_fit(X.slice(batch));
+            await self.partial_fit(X.gather(batch));
         }
         tf.dispose(X);
         return self;
@@ -322,9 +322,9 @@ class IncrementalPCA {
             Returns the instance itself.
         */
         let self = this;
-        X = tf.tensor(X);
-        n_samples = X.shape[0];
-        n_features = X.shape[1];
+        if (!X.shape) X = tf.tensor(X);
+        const n_samples = X.shape[0];
+        const n_features = X.shape[1];
 
         if (self.n_components === undefined) {
             if (self.components_ === undefined) {
@@ -332,7 +332,7 @@ class IncrementalPCA {
             } else {
                 self.n_components_ = self.components_.shape[0];
             }
-        } else if ((1 <= self.n_components) && (self.n_components <= n_features)) {
+        } else if (!((1 <= self.n_components) && (self.n_components <= n_features))) {
             throw Error(`n_components=${self.n_components} invalid for n_features=${n_features}, need more rows than columns for IncrementalPCA processing`);
         }
         else if (self.n_components > n_samples) {
@@ -348,16 +348,15 @@ class IncrementalPCA {
         // This is the first partial_fit
         if (self.n_samples_seen_ === undefined) {
             self.n_samples_seen_ = 0;
-            self.mean_ = 0.0;
-            self.var_ = 0.0;
+            self.mean_ = tf.scalar(0.0);
+            self.var_ = tf.scalar(0.0);
         }
 
         // Update stats - they are 0; if this is the fisrt step
+        const last_sample_count = tf.fill([n_features], self.n_samples_seen_);
         let { col_mean, col_var, n_total_samples } = await incremental_mean_and_var(
-            X, self.mean_, self.var_,
-            tf.fill(self.n_samples_seen_, n_features)
-        );
-        n_total_samples = await n_total_samples.array()[0];
+            X, self.mean_, self.var_, last_sample_count);
+        n_total_samples = (await n_total_samples.array())[0];
 
         // Whitening
         if (self.n_samples_seen_ === 0) {
@@ -376,19 +375,19 @@ class IncrementalPCA {
         V = tf.tensor(V);
         S = tf.tensor(S);
         const explained_variance = S.pow(2).div(n_total_samples - 1);
-        explained_variance_ratio = S.pow(2).div(tf.sum(col_var.mul(n_total_samples)));
+        const explained_variance_ratio = S.pow(2).div(tf.sum(col_var.mul(n_total_samples)));
 
         self.n_samples_seen_ = n_total_samples;
         const startIndices = utils.slice(0, self.n_components_);
-        self.components_ = V.slice(startIndices);
-        self.singular_values_ = S.slice(startIndices);
+        self.components_ = V.gather(startIndices);
+        self.singular_values_ = S.gather(startIndices);
         self.mean_ = col_mean;
         self.var_ = col_var;
-        self.explained_variance_ = explained_variance.slice(startIndices);
-        self.explained_variance_ratio_ = explained_variance_ratio.slice(startIndices);
+        self.explained_variance_ = explained_variance.gather(startIndices);
+        self.explained_variance_ratio_ = explained_variance_ratio.gather(startIndices);
         if (self.n_components_ < n_features) {
             const endIndices = utils.slice(self.n_components_, n_features);
-            self.noise_variance_ = explained_variance.slice(endIndices).mean();
+            self.noise_variance_ = explained_variance.gather(endIndices).mean();
         } else {
             self.noise_variance_ = 0;
         }
@@ -435,4 +434,4 @@ class IncrementalPCA {
 
 module.exports = {
     IncrementalPCA,
-}
+};
