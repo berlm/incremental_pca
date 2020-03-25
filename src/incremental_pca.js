@@ -354,9 +354,12 @@ class IncrementalPCA {
 
         // Update stats - they are 0; if this is the fisrt step
         const last_sample_count = tf.fill([n_features], self.n_samples_seen_);
-        let { col_mean, col_var, n_total_samples } = await incremental_mean_and_var(
+        let { updated_mean, updated_variance, updated_sample_count } = await incremental_mean_and_var(
             X, self.mean_, self.var_, last_sample_count);
-        n_total_samples = (await n_total_samples.array())[0];
+        
+        let col_var = updated_variance;
+        let col_mean = updated_mean;
+        let n_total_samples = (await updated_sample_count.array())[0];
 
         // Whitening
         if (self.n_samples_seen_ === 0) {
@@ -369,18 +372,18 @@ class IncrementalPCA {
             const mean_correction = tf.sqrt(tf.mul(self.n_samples_seen_, n_samples / n_total_samples)).mul(self.mean_.sub(col_batch_mean));
             X = tf.concat([self.singular_values_.reshape([-1, 1]).mul(self.components_), X, mean_correction], 1);
         }
-        let { U, V, S } = SVD(await X.array(), true, true);
+        let { u, v, q } = SVD(await X.array(), true, true);
         // U, V = svd_flip(U, V, false);
-        U = tf.tensor(U);
-        V = tf.tensor(V);
-        S = tf.tensor(S);
-        const explained_variance = S.pow(2).div(n_total_samples - 1);
-        const explained_variance_ratio = S.pow(2).div(tf.sum(col_var.mul(n_total_samples)));
+        u = tf.tensor(u);
+        v = tf.tensor(v);
+        q = tf.tensor(q);
+        const explained_variance = q.pow(2).div(n_total_samples - 1);
+        const explained_variance_ratio = q.pow(2).div(tf.sum(col_var.mul(n_total_samples)));
 
         self.n_samples_seen_ = n_total_samples;
         const startIndices = utils.slice(0, self.n_components_);
-        self.components_ = V.gather(startIndices);
-        self.singular_values_ = S.gather(startIndices);
+        self.components_ = v.gather(startIndices);
+        self.singular_values_ = q.gather(startIndices);
         self.mean_ = col_mean;
         self.var_ = col_var;
         self.explained_variance_ = explained_variance.gather(startIndices);
@@ -420,7 +423,7 @@ class IncrementalPCA {
          */
 
         // check_is_fitted(self)
-        self = this;
+        let self = this;
         return await tf.tidy(() => {
             X = tf.tensor(X);
 

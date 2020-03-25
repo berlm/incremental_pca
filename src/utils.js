@@ -33,12 +33,8 @@ function* gen_batches(n, batch_size, min_batch_size = 0) {
     >>> list(gen_batches(7, 3, min_batch_size=2))
     [slice(0, 3, None), slice(3, 7, None)]
      */
-    let start = 0, end = 0;
-    for (let i = 0; i < n / batch_size; i++) {
-        end += batch_size;
-        if (end - start < min_batch_size) {
-            continue;
-        }
+    let start = 0;
+    for (let end = start + batch_size; end <= n; end += batch_size) {
         yield slice(start, end);
         start = end;
     }
