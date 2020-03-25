@@ -1,12 +1,14 @@
 // """Tests for Incremental PCA."""
 const PCA = require("../src/incremental_pca");
+const chai = require("chai");
 
 describe('Incremental PCA', function () {
     it('should perform fit and transform', async function () {
         const pca = new PCA.IncrementalPCA(2, true, true, 5);
         const X = [[1, 1, 1, 1], [1, 1, 2, 2], [1, 1, 3, 3], [2, 2, 5, 5], [1, 1, 3, 3], [2, 2, 5, 5]];
         await pca.fit(X);
-        const res = await pca.transform(X);
+        const X_transformed = await pca.transform(X);
+        chai.expect([X_transformed.length, X_transformed[0].length]).to.deep.equal([X.length, 2]);
     });
 });
 

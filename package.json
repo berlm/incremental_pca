@@ -27,13 +27,14 @@
     "svd-js": "^1.0.5"
   },
   "devDependencies": {
-    "chai": "^4.2.0",
-    "mocha": "^7.1.1",
     "babel-core": "^6.26.0",
     "babel-eslint": "^8.2.1",
     "babel-plugin-external-helpers": "^6.22.0",
     "babel-plugin-transform-class-properties": "^6.24.1",
     "babel-plugin-transform-object-rest-spread": "^6.26.0",
-    "babel-preset-es2015": "^6.24.1"
+    "babel-preset-es2015": "^6.24.1",
+    "chai": "^4.2.0",
+    "mocha": "^7.1.1",
+    "pca-js": "^1.0.2"
   }
 }
