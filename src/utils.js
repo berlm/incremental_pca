@@ -5,7 +5,7 @@ function slice(start, end) {
 function* gen_batches(n, batch_size, min_batch_size = 0) {
     /* Generator to create slices containing batch_size elements, from 0 to n.
 
-    The last slice may contain less than batch_size elements, when batch_size
+    The last slice contains more than batch_size elements when batch_size
     does not divide n.
 
     Parameters

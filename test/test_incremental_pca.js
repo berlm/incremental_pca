@@ -6,7 +6,7 @@ const chai = require("chai");
 
 describe('Incremental PCA', function () {
     it('should perform fit and transform and distinguish different vectors', async function () {
-        const pca = new IPCA.IncrementalPCA(2, true, true, 5);
+        const pca = new IPCA.IncrementalPCA(2, true, 5);
         const X = [[1, 1, 1, 1], [1, 1, 2, 2], [1, 1, 3, 3], [2, 2, 5, 5], [1, 1, 3, 3], [2, 2, 5, 5]];
         await pca.fit(X);
         const X_transformed = await pca.transform(X);
@@ -28,7 +28,7 @@ describe('Incremental PCA on iris dataset', function () {
             PCA.computePercentageExplained(vectors, v)
         );
 
-        const ipca = new IPCA.IncrementalPCA(vectors.length, true, true, batch_size);
+        const ipca = new IPCA.IncrementalPCA(vectors.length, true, batch_size);
         await ipca.fit(X);
         const explained_variance_ipca = ipca.explained_variance_ratio();
 

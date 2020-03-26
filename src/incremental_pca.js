@@ -5,7 +5,7 @@ const SVD = require('svd-js').SVD;
 // Incremental Principal Components Analysis.
 // License: BSD 3 clause
 
-async function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count) {
+function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count) {
     /* """Calculate mean update and a Youngs and Cramer variance update.
 
     last_mean and last_variance are statistics computed at the last step by the
@@ -124,10 +124,6 @@ class IncrementalPCA {
         improve the predictive accuracy of the downstream estimators by
         making data respect some hard-wired assumptions.
 
-    copy : bool, (default=true)
-        If false, X will be overwritten. ``copy=false`` can be used to
-        save memory but is unsafe for general use.
-
     batch_size : int or None;, (default=None;)
         The number of samples to use for each batch. Only used when calling
         ``fit``. If ``batch_size`` is ``None;``, then ``batch_size``
@@ -181,7 +177,7 @@ class IncrementalPCA {
     >>> transformer = IncrementalPCA(n_components=7, batch_size=200)
     >>> # either partially fit on smaller batches of data
     >>> transformer.partial_fit(X[:100, :])
-    IncrementalPCA(batch_size=200, copy=true, n_components=7, whiten=false)
+    IncrementalPCA(batch_size=200, n_components=7, whiten=false)
     >>> # or let the fit function itself divide the data into batches
     >>> X_transformed = transformer.fit_transform(X)
     >>> X_transformed.shape
@@ -228,11 +224,10 @@ class IncrementalPCA {
     TruncatedSVD
      */
 
-    constructor(n_components, whiten = false, copy = true, batch_size = undefined) {
+    constructor(n_components, whiten = false, batch_size = undefined) {
         let self = this;
         self.n_components = n_components;
         self.whiten = whiten;
-        self.copy = copy;
         self.batch_size = batch_size;
     }
 
@@ -240,7 +235,7 @@ class IncrementalPCA {
         return this.explained_variance_ratio_.arraySync();
     }
 
-    async fit(X) {
+    fit(X) {
         /* Fit the model with X, using minibatches of size batch_size.
 
         Parameters
@@ -257,29 +252,29 @@ class IncrementalPCA {
             Returns the instance itself.
          */
         let self = this;
-        X = tf.tensor(X);
-        self.n_samples_seen_ = 0;
-        self.mean_ = tf.scalar(0.0);
-        self.var_ = tf.scalar(0.0);
+        return tf.tidy(() => {
+            X = tf.tensor(X);
+            self.n_samples_seen_ = 0;
+            self.mean_ = tf.scalar(0.0);
+            self.var_ = tf.scalar(0.0);
 
-        // X = check_array(X, copy = self.copy, dtype = [np.float64, np.float32]);
-        const n_samples = X.shape[0];
-        const n_features = X.shape[1];
+            const n_samples = X.shape[0];
+            const n_features = X.shape[1];
 
-        if (self.batch_size === undefined) {
-            self.batch_size_ = 5 * n_features;
-        } else {
-            self.batch_size_ = Math.max(self.batch_size, n_features);
-        }
+            if (self.batch_size === undefined) {
+                self.batch_size_ = 5 * n_features;
+            } else {
+                self.batch_size_ = Math.max(self.batch_size, n_features);
+            }
 
-        for (let batch of utils.gen_batches(n_samples, self.batch_size_, self.n_components || 0)) {
-            await self.partial_fit(X.gather(batch));
-        }
-        tf.dispose(X);
-        return self;
+            for (let batch of utils.gen_batches(n_samples, self.batch_size_, self.n_components || 0)) {
+                self.partial_fit(X.gather(batch));
+            }
+            return self;
+        });
     }
 
-    async partial_fit(X) {
+    partial_fit(X) {
         /* Incremental fit with X. All of X is processed as a single batch.
     
         Parameters
@@ -298,82 +293,84 @@ class IncrementalPCA {
             Returns the instance itself.
         */
         let self = this;
-        if (!X.shape) X = tf.tensor(X);
-        const n_samples = X.shape[0];
-        const n_features = X.shape[1];
+        return tf.tidy(() => {
+            if (!X.shape) X = tf.tensor(X);
+            const n_samples = X.shape[0];
+            const n_features = X.shape[1];
 
-        if (self.n_components === undefined) {
-            if (self.components_ === undefined) {
-                self.n_components_ = min(n_samples, n_features);
-            } else {
-                self.n_components_ = self.components_.shape[0];
+            if (self.n_components === undefined) {
+                if (self.components_ === undefined) {
+                    self.n_components_ = min(n_samples, n_features);
+                } else {
+                    self.n_components_ = self.components_.shape[0];
+                }
+            } else if (!((1 <= self.n_components) && (self.n_components <= n_features))) {
+                throw Error(`n_components=${self.n_components} invalid for n_features=${n_features}, need more rows than columns for IncrementalPCA processing`);
             }
-        } else if (!((1 <= self.n_components) && (self.n_components <= n_features))) {
-            throw Error(`n_components=${self.n_components} invalid for n_features=${n_features}, need more rows than columns for IncrementalPCA processing`);
-        }
-        else if (self.n_components > n_samples) {
-            throw Error(`n_components=${self.n_components} must be less or equal to the batch number of samples ${n_samples}.`);
-        } else {
-            self.n_components_ = self.n_components;
-        }
+            else if (self.n_components > n_samples) {
+                throw Error(`n_components=${self.n_components} must be less or equal to the batch number of samples ${n_samples}.`);
+            } else {
+                self.n_components_ = self.n_components;
+            }
 
-        if ((self.components_ !== undefined) && (self.components_.shape[0] != self.n_components_)) {
-            throw Error(`Number of input features has changed from ${self.components_.shape[0]} to ${self.n_components_} between calls to partial_fit! Try setting n_components to a fixed value.`);
-        }
+            if ((self.components_ !== undefined) && (self.components_.shape[0] != self.n_components_)) {
+                throw Error(`Number of input features has changed from ${self.components_.shape[0]} to ${self.n_components_} between calls to partial_fit! Try setting n_components to a fixed value.`);
+            }
 
-        // This is the first partial_fit
-        if (self.n_samples_seen_ === undefined) {
-            self.n_samples_seen_ = 0;
-            self.mean_ = tf.scalar(0.0);
-            self.var_ = tf.scalar(0.0);
-        }
+            // This is the first partial_fit
+            if (self.n_samples_seen_ === undefined) {
+                self.n_samples_seen_ = 0;
+                self.mean_ = tf.scalar(0.0);
+                self.var_ = tf.scalar(0.0);
+            }
 
-        // Update stats - they are 0; if this is the fisrt step
-        const last_sample_count = tf.fill([n_features], self.n_samples_seen_);
-        let { updated_mean, updated_variance, updated_sample_count } = await incremental_mean_and_var(
-            X, self.mean_, self.var_, last_sample_count);
+            // Update stats - they are 0; if this is the fisrt step
+            const last_sample_count = tf.fill([n_features], self.n_samples_seen_);
+            let { updated_mean, updated_variance, updated_sample_count } = incremental_mean_and_var(
+                X, self.mean_, self.var_, last_sample_count);
 
-        let col_var = updated_variance;
-        let col_mean = updated_mean;
-        let n_total_samples = (await updated_sample_count.array())[0];
+            let col_var = updated_variance;
+            let col_mean = updated_mean;
+            let n_total_samples = updated_sample_count.arraySync()[0];
 
-        // Whitening
-        if (self.n_samples_seen_ === 0) {
-            // # If it is the first step, simply whiten X
-            X = X.sub(col_mean);
-        } else {
-            const col_batch_mean = X.mean(0);
-            X = X.sub(col_batch_mean);
-            // # Build matrix of combined previous basis and new data
-            const mean_correction = tf.sqrt(tf.mul(self.n_samples_seen_, n_samples / n_total_samples)).mul(self.mean_.sub(col_batch_mean));
-            X = tf.concat([self.singular_values_.reshape([-1, 1]).mul(self.components_), X, mean_correction.reshape([1, -1])], 0);
-        }
-        let { u, v, q } = SVD(await X.array(), true, true);
+            // Whitening
+            if (self.n_samples_seen_ === 0) {
+                // # If it is the first step, simply whiten X
+                X = X.sub(col_mean);
+            } else {
+                const col_batch_mean = X.mean(0);
+                X = X.sub(col_batch_mean);
+                // # Build matrix of combined previous basis and new data
+                const mean_correction = tf.sqrt(tf.mul(self.n_samples_seen_, n_samples / n_total_samples)).mul(self.mean_.sub(col_batch_mean));
+                X = tf.concat([self.singular_values_.reshape([-1, 1]).mul(self.components_), X, mean_correction.reshape([1, -1])], 0);
+            }
+            let { u, v, q } = SVD(X.arraySync(), true, true);
 
-        u = tf.tensor(u);
-        v = tf.tensor(v).transpose();
-        q = tf.tensor(q);
-        const explained_variance = q.pow(2).div(n_total_samples - 1);
-        const explained_variance_ratio = q.pow(2).div(tf.sum(col_var.mul(n_total_samples)));
+            u = tf.tensor(u);
+            v = tf.tensor(v).transpose();
+            q = tf.tensor(q);
+            const explained_variance = q.pow(2).div(n_total_samples - 1);
+            const explained_variance_ratio = q.pow(2).div(tf.sum(col_var.mul(n_total_samples)));
 
-        self.n_samples_seen_ = n_total_samples;
-        const startIndices = utils.slice(0, self.n_components_);
-        self.components_ = v.gather(startIndices);
-        self.singular_values_ = q.gather(startIndices);
-        self.mean_ = col_mean;
-        self.var_ = col_var;
-        self.explained_variance_ = explained_variance.gather(startIndices);
-        self.explained_variance_ratio_ = explained_variance_ratio.gather(startIndices);
-        if (self.n_components_ < n_features) {
-            const endIndices = utils.slice(self.n_components_, n_features);
-            self.noise_variance_ = explained_variance.gather(endIndices).mean();
-        } else {
-            self.noise_variance_ = 0;
-        }
-        return self;
+            self.n_samples_seen_ = n_total_samples;
+            const startIndices = utils.slice(0, self.n_components_);
+            self.components_ = v.gather(startIndices);
+            self.singular_values_ = q.gather(startIndices);
+            self.mean_ = col_mean;
+            self.var_ = col_var;
+            self.explained_variance_ = explained_variance.gather(startIndices);
+            self.explained_variance_ratio_ = explained_variance_ratio.gather(startIndices);
+            if (self.n_components_ < n_features) {
+                const endIndices = utils.slice(self.n_components_, n_features);
+                self.noise_variance_ = explained_variance.gather(endIndices).mean();
+            } else {
+                self.noise_variance_ = 0;
+            }
+            return self;
+        });
     }
 
-    async transform(X) {
+    transform(X) {
         /* Apply dimensionality reduction to X.
         X is projected on the first principal components previously extracted
         from a training set, using minibatches of size batch_size if X is
@@ -400,14 +397,14 @@ class IncrementalPCA {
 
         // check_is_fitted(self)
         let self = this;
-        return await tf.tidy(() => {
+        return tf.tidy(() => {
             X = tf.tensor(X);
 
             if (self.mean_ !== undefined) X = X.sub(self.mean_);
             let X_transformed = X.dot(self.components_.transpose());
             if (self.whiten) X_transformed = X_transformed.div(self.explained_variance_.sqrt());
             return X_transformed;
-        }).array();
+        }).arraySync();
     }
 }
 
