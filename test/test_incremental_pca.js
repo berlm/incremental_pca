@@ -17,6 +17,12 @@ describe('Incremental PCA', function () {
     });
 });
 
+function l1Norm(a, b) {
+    return tf.tidy(() =>
+        tf.tensor(a).sub(tf.tensor(b)).abs().sum().asScalar().arraySync()
+    );
+}
+
 describe('Incremental PCA on iris dataset', function () {
     it('should be similar to PCA on Iris dataset', async function () {
         let iris = require('js-datasets-iris');
@@ -32,7 +38,13 @@ describe('Incremental PCA on iris dataset', function () {
         await ipca.fit(X);
         const explained_variance_ipca = ipca.explained_variance_ratio();
 
-        const l1_diff = tf.tensor(explained_variance_ipca).sub(tf.tensor(explained_pca)).abs().sum();
-        chai.expect(l1_diff.asScalar().arraySync()).to.be.lessThan(0.05);
+        chai.expect(l1Norm(explained_variance_ipca, explained_pca)).to.be.lessThan(0.05);
+
+        const serialized = JSON.parse(JSON.stringify(ipca.serialize()));
+        const ipcaNew = IPCA.IncrementalPCA.deserialize(serialized);
+        const X_transformed = ipca.transform(X);
+        const X_transformed_new = ipcaNew.transform(X);
+        const l1_diff_tr = l1Norm(X_transformed, X_transformed_new);
+        chai.expect(l1_diff_tr).to.be.lessThan(0.01);
     });
 });

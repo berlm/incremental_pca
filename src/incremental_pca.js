@@ -86,6 +86,11 @@ function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count
     });
 }
 
+const tensorConversion = "tensor";
+const conversions = {
+    [tensorConversion]: tf.tensor
+};
+
 class IncrementalPCA {
     /* Incremental principal components analysis (IPCA).
 
@@ -405,6 +410,31 @@ class IncrementalPCA {
             if (self.whiten) X_transformed = X_transformed.div(self.explained_variance_.sqrt());
             return X_transformed;
         }).arraySync();
+    }
+
+    serialize() {
+        const json = {};
+        for (let prop in this) {
+            let value, conversion;
+            if (this[prop].arraySync) {
+                value = this[prop].arraySync();
+                conversion = tensorConversion;
+            } else {
+                value = this[prop];
+            }
+            json[prop] = { value, conversion };
+        }
+        return json;
+    }
+
+    static deserialize(json) {
+        const self = new IncrementalPCA(json.n_components);
+        for (let prop in json) {
+            let { value, conversion } = json[prop];
+            if (conversion) value = conversions[conversion](value);
+            self[prop] = value;
+        }
+        return self;
     }
 }
 
