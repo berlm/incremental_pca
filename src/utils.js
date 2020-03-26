@@ -34,7 +34,7 @@ function* gen_batches(n, batch_size, min_batch_size = 0) {
     [slice(0, 3, None), slice(3, 7, None)]
      */
     let start = 0;
-    for (let end = start + batch_size; end <= n; end += batch_size) {
+    for (let end = start + batch_size; end + min_batch_size <= n; end += batch_size) {
         yield slice(start, end);
         start = end;
     }

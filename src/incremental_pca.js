@@ -65,7 +65,7 @@ async function incremental_mean_and_var(X, last_mean, last_variance, last_sample
         let updated_variance;
 
         if (last_variance !== undefined) {
-            const new_unnormalized_variance = tf.pow(X, 2).mean(0).mul(new_sample_count);
+            const new_unnormalized_variance = X.pow(2).mean(0).sub(X.mean(0).pow(2)).mul(new_sample_count);
             const last_unnormalized_variance = last_variance.mul(last_sample_count);
 
             // with np.errstate(divide='ignore', invalid='ignore'):
@@ -83,34 +83,6 @@ async function incremental_mean_and_var(X, last_mean, last_variance, last_sample
         }
 
         return { updated_mean, updated_variance, updated_sample_count };
-    });
-}
-
-async function svd_flip(u, v) {
-    /* Sign correction to ensure deterministic output from SVD.
-    Adjusts the columns of u and the rows of v such that the loadings in the
-    columns in u that are largest in absolute value are always positive.
-    Parameters
-    ----------
-    u : ndarray
-        u and v are the output of `linalg.svd` or
-        :func:`~sklearn.utils.extmath.randomized_svd`, with matching inner
-        dimensions so one can compute `np.dot(u * s, v)`.
-    v : ndarray
-        u and v are the output of `linalg.svd` or
-        :func:`~sklearn.utils.extmath.randomized_svd`, with matching inner
-        dimensions so one can compute `np.dot(u * s, v)`.
-    Returns
-    -------
-    u_adjusted, v_adjusted : arrays with the same dimensions as the input.
-    */
-    // # rows of v, columns of u
-    return tf.tidy(() => {
-        const max_abs_rows = tf.argMax(tf.abs(v), 1);
-        const signs = tf.sign(v.slice(utils.slice(0, v.shape[0]), max_abs_rows));
-        u = u.mul(signs);
-        v = v.mul(signs);
-        return { u, v };
     });
 }
 
@@ -264,6 +236,10 @@ class IncrementalPCA {
         self.batch_size = batch_size;
     }
 
+    explained_variance_ratio() {
+        return this.explained_variance_ratio_.arraySync();
+    }
+
     async fit(X) {
         /* Fit the model with X, using minibatches of size batch_size.
 
@@ -341,8 +317,8 @@ class IncrementalPCA {
             self.n_components_ = self.n_components;
         }
 
-        if ((self.components_ !== undefined) && (self.components_.length != self.n_components_)) {
-            throw Error(`Number of input features has changed from ${self.components_.length} to ${self.n_components_} between calls to partial_fit! Try setting n_components to a fixed value.`);
+        if ((self.components_ !== undefined) && (self.components_.shape[0] != self.n_components_)) {
+            throw Error(`Number of input features has changed from ${self.components_.shape[0]} to ${self.n_components_} between calls to partial_fit! Try setting n_components to a fixed value.`);
         }
 
         // This is the first partial_fit
@@ -356,7 +332,7 @@ class IncrementalPCA {
         const last_sample_count = tf.fill([n_features], self.n_samples_seen_);
         let { updated_mean, updated_variance, updated_sample_count } = await incremental_mean_and_var(
             X, self.mean_, self.var_, last_sample_count);
-        
+
         let col_var = updated_variance;
         let col_mean = updated_mean;
         let n_total_samples = (await updated_sample_count.array())[0];
@@ -370,12 +346,12 @@ class IncrementalPCA {
             X = X.sub(col_batch_mean);
             // # Build matrix of combined previous basis and new data
             const mean_correction = tf.sqrt(tf.mul(self.n_samples_seen_, n_samples / n_total_samples)).mul(self.mean_.sub(col_batch_mean));
-            X = tf.concat([self.singular_values_.reshape([-1, 1]).mul(self.components_), X, mean_correction], 1);
+            X = tf.concat([self.singular_values_.reshape([-1, 1]).mul(self.components_), X, mean_correction.reshape([1, -1])], 0);
         }
         let { u, v, q } = SVD(await X.array(), true, true);
-        // U, V = svd_flip(U, V, false);
+
         u = tf.tensor(u);
-        v = tf.tensor(v);
+        v = tf.tensor(v).transpose();
         q = tf.tensor(q);
         const explained_variance = q.pow(2).div(n_total_samples - 1);
         const explained_variance_ratio = q.pow(2).div(tf.sum(col_var.mul(n_total_samples)));

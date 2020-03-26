@@ -34,6 +34,7 @@
     "babel-plugin-transform-object-rest-spread": "^6.26.0",
     "babel-preset-es2015": "^6.24.1",
     "chai": "^4.2.0",
+    "js-datasets-iris": "^1.0.4",
     "mocha": "^7.1.1",
     "pca-js": "^1.0.2"
   }
