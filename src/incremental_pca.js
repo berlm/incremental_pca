@@ -368,12 +368,12 @@ class IncrementalPCA {
             self.var_ = col_var;
             self.explained_variance_ = explained_variance.gather(startIndices);
             self.explained_variance_ratio_ = explained_variance_ratio.gather(startIndices);
-            if (self.n_components_ < n_features && explained_variance.shape[0] > self.n_components_) {
-                const endIndices = utils.slice(self.n_components_, Math.min(n_features));
-                self.noise_variance_ = explained_variance.gather(endIndices).mean();
-            } else {
-                self.noise_variance_ = 0;
-            }
+            // if (self.n_components_ < n_features && explained_variance.shape[0] > self.n_components_) {
+            //     const endIndices = utils.slice(self.n_components_, Math.min(n_features, explained_variance.shape[0]));
+            //     self.noise_variance_ = explained_variance.gather(endIndices).mean();
+            // } else {
+            //     self.noise_variance_ = 0;
+            // }
             return self;
         });
     }
