@@ -287,10 +287,6 @@ class IncrementalPCA {
             X : array - like, shape(n_samples, n_features)
             Training data, where n_samples is the number of samples and
             n_features is the number of features.
-                check_input : bool
-            Run check_array on X.
-    
-        y : Ignored
     
         Returns
         -------
@@ -299,7 +295,7 @@ class IncrementalPCA {
         */
         let self = this;
         return tf.tidy(() => {
-            if (!X.shape) X = tf.tensor(X);
+            if (!(X instanceof tf.Tensor)) { X = tf.tensor(X); }
             const n_samples = X.shape[0];
             const n_features = X.shape[1];
 
