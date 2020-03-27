@@ -24,7 +24,7 @@
   "dependencies": {
     "@tensorflow/tfjs": "^1.7.0",
     "@tensorflow/tfjs-node": "^1.7.0",
-    "svd-js": "^1.0.5"
+    "ml-matrix": "^6.4.1"
   },
   "devDependencies": {
     "babel-core": "^6.26.0",

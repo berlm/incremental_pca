@@ -1,6 +1,9 @@
 const tf = require("@tensorflow/tfjs-node");
 const utils = require("./utils");
-const SVD = require('svd-js').SVD;
+const {
+    Matrix,
+    SingularValueDecomposition,
+} = require('ml-matrix');
 
 // Incremental Principal Components Analysis.
 // License: BSD 3 clause
@@ -269,7 +272,7 @@ class IncrementalPCA {
             if (self.batch_size === undefined) {
                 self.batch_size_ = 5 * n_features;
             } else {
-                self.batch_size_ = Math.max(self.batch_size, n_features);
+                self.batch_size_ = self.batch_size;
             }
 
             for (let batch of utils.gen_batches(n_samples, self.batch_size_, self.n_components || 0)) {
@@ -345,7 +348,11 @@ class IncrementalPCA {
                 const mean_correction = tf.sqrt(tf.mul(self.n_samples_seen_, n_samples / n_total_samples)).mul(self.mean_.sub(col_batch_mean));
                 X = tf.concat([self.singular_values_.reshape([-1, 1]).mul(self.components_), X, mean_correction.reshape([1, -1])], 0);
             }
-            let { u, v, q } = SVD(X.arraySync(), true, true);
+            let svd = new SingularValueDecomposition(new Matrix(X.arraySync()), {autoTranspose: true});
+            let u = svd.leftSingularVectors.to2DArray();
+            let v = svd.rightSingularVectors.to2DArray();
+            let q = svd.diagonal;
+            // let { u, v, q } = SVD(X.arraySync(), true, true);
 
             u = tf.tensor(u);
             v = tf.tensor(v).transpose();
@@ -361,8 +368,8 @@ class IncrementalPCA {
             self.var_ = col_var;
             self.explained_variance_ = explained_variance.gather(startIndices);
             self.explained_variance_ratio_ = explained_variance_ratio.gather(startIndices);
-            if (self.n_components_ < n_features) {
-                const endIndices = utils.slice(self.n_components_, n_features);
+            if (self.n_components_ < n_features && explained_variance.shape[0] > self.n_components_) {
+                const endIndices = utils.slice(self.n_components_, Math.min(n_features));
                 self.noise_variance_ = explained_variance.gather(endIndices).mean();
             } else {
                 self.noise_variance_ = 0;
