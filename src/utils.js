@@ -1,4 +1,5 @@
-const tf = require("@tensorflow/tfjs-node");
+// const tf = require("@tensorflow/tfjs-node");
+const tf = require("@tensorflow/tfjs");
 
 const tensorConversion = "tensor";
 const conversions = {
@@ -80,4 +81,5 @@ module.exports = {
     gen_batches,
     serializeObjPublicProps,
     deserializeFromPublicProps,
+    tf,
 };

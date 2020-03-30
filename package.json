@@ -22,7 +22,7 @@
   },
   "homepage": "https://github.com/berlm/incremental_pca#readme",
   "dependencies": {
-    "@tensorflow/tfjs": "^1.7.0",
+    "@tensorflow/tfjs": "^1.7.1",
     "@tensorflow/tfjs-node": "^1.7.0",
     "ml-matrix": "^6.4.1"
   },

@@ -1,5 +1,5 @@
-const tf = require("@tensorflow/tfjs-node");
 const utils = require("./utils");
+const tf = utils.tf;
 const {
     Matrix,
     SingularValueDecomposition,
