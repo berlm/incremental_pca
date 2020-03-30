@@ -1,3 +1,29 @@
+
+function serializeObjPublicProps(obj) {
+    const json = {};
+    for (let prop in obj) {
+        let value, conversion;
+        if (obj[prop].arraySync) {
+            value = obj[prop].arraySync();
+            conversion = tensorConversion;
+        } else {
+            value = obj[prop];
+        }
+        json[prop] = { value, conversion };
+    }
+    return json;
+}
+
+function deserializeFromPublicProps(cls, json) {
+    const self = new cls(json.n_components);
+    for (let prop in json) {
+        let { value, conversion } = json[prop];
+        if (conversion) value = conversions[conversion](value);
+        self[prop] = value;
+    }
+    return self;
+}
+
 function slice(start, end) {
     return Array.apply(null, { length: end - start }).map(Number.call, function (n) { return n + start; });
 }
@@ -46,4 +72,6 @@ function* gen_batches(n, batch_size, min_batch_size = 0) {
 module.exports = {
     slice,
     gen_batches,
+    serializeObjPublicProps,
+    deserializeFromPublicProps,
 };

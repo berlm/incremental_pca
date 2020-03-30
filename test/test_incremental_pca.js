@@ -17,6 +17,19 @@ describe('Incremental PCA', function () {
     });
 });
 
+describe('Fast PCA', function () {
+    it('should perform fit and transform and distinguish different vectors', async function () {
+        const pca = new IPCA.FastPCA(2, true, 2);
+        const X = [[1, 1, 1, 1, 1], [1, 1, 2, 2, 2], [1, 1, 3, 3, 3], [2, 2, 5, 5, 5], [1, 1, 3, 3, 3], [2, 2, 5, 5, 5]];
+        await pca.fit(X);
+        const X_transformed = await pca.transform(X);
+        chai.expect([X_transformed.length, X_transformed[0].length]).to.deep.equal([X.length, 2]);
+        chai.expect(X_transformed[2]).to.deep.equal(X_transformed[4]);
+        chai.expect(X_transformed[3]).to.deep.equal(X_transformed[5]);
+        chai.expect(X_transformed[0]).to.be.deep.not.equal(X_transformed[1]);
+    });
+});
+
 function l1Norm(a, b) {
     return tf.tidy(() =>
         tf.tensor(a).sub(tf.tensor(b)).abs().sum().asScalar().arraySync()

@@ -8,8 +8,9 @@ const {
 // Incremental Principal Components Analysis.
 // License: BSD 3 clause
 
+
 function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count) {
-    /* """Calculate mean update and a Youngs and Cramer variance update.
+    /* Calculate mean update and a Youngs and Cramer variance update.
 
     last_mean and last_variance are statistics computed at the last step by the
     function. Both must be initialized to 0.0. In case no scaling is required
@@ -53,7 +54,7 @@ function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count
     Also, see the sparse implementation of this in
     `utils.sparsefuncs.incr_mean_variance_axis` and
     `utils.sparsefuncs_fast.incr_mean_variance_axis0`
-    """ */
+    */
     // # old = stats until now
     // # new = the current increment
     // # updated = the aggregated stats
@@ -93,6 +94,107 @@ const tensorConversion = "tensor";
 const conversions = {
     [tensorConversion]: tf.tensor
 };
+
+/* Implementation based on https://link.springer.com/chapter/10.1007/978-3-540-45080-1_122 */
+class FastPCA {
+    constructor(n_components, whiten = true, amnesy = 100) {
+        this.n_components = n_components;
+        this.whiten = whiten;
+        this.amnesy = amnesy;
+        this.components_ = [];
+        this.n_samples_seen_ = 0; // vectors seen
+        this.mean_ = tf.scalar(0.0); // incrementally computed mean per component
+        this.var_ = tf.scalar(0.0); // incrementally computed variance per component
+        this.n_features_ = undefined;
+    }
+
+    fit(X) {
+        for (let u of X) {
+            this.fit_one(u);
+        }
+        return this;
+    }
+
+    partial_fit(X) {
+        return this.fit(X);
+    }
+
+    fit_one(u) {
+        return tf.tidy(() => {
+            u = tf.tensor(u);
+            let X = u.reshape([1, -1]);
+            const k = this.n_components;
+            const n = this.n_samples_seen_;
+            const l = this.amnesy;
+
+            const n_features = u.shape[0];
+            if (this.n_features_ === undefined) {
+                this.n_features_ = n_features;
+            } else if (this.n_features_ !== n_features) {
+                throw Error(`Dimesion of input changed from ${this.n_features_} to ${n_features}`);
+            }
+
+            // Update stats - they are 0; if this is the fisrt step
+            const last_sample_count = tf.fill([n_features], this.n_samples_seen_);
+            let { updated_mean, updated_variance } = incremental_mean_and_var(
+                X, this.mean_, this.var_, last_sample_count);
+
+            let n_total_samples = n + 1;
+
+            // Whitening
+            const mean_correction = tf.sqrt(this.n_samples_seen_ / n_total_samples).mul(this.mean_);
+            X = X.sub(mean_correction);
+            u = X.reshape([1, -1]);
+
+            this.mean_ = updated_mean;
+            this.var_ = updated_variance;
+
+            for (let i = 0; i < k; i++) {
+                let v;
+                if (i < n) {
+                    const vp = this.components_[i];
+                    const part1 = vp.mul((n - 1 - l) / n);
+                    const part2 = u.dot(u.transpose()).mul((l + 1) / n).mul(vp).div(vp.norm('euclidean'));
+                    v = part1.add(part2);
+                    const v_normed = v.div(v.norm('euclidean'));
+                    const u_proj_to_v = v_normed.mul(v_normed.dot(u.transpose()));
+                    u = u.sub(u_proj_to_v);
+                } else if (i == n) {
+                    v = u;
+                } else {
+                    v = tf.zeros(u.shape);
+                }
+                if (this.components_.length <= i) {
+                    this.components_.push(v);
+                } else {
+                    this.components_[i] = v;
+                }
+            }
+            this.n_samples_seen_++;
+            return this;
+        });
+    }
+
+    transform(X) {
+        return tf.tidy(() => {
+            X = tf.tensor(X);
+
+            if (this.mean_ !== undefined) X = X.sub(this.mean_);
+            let X_transformed = X.dot(tf.tensor(this.components_.map(x => x.arraySync())).reshape([this.n_components, -1]).transpose());
+            // if (this.whiten) X_transformed = X_transformed.div(this.var_.sqrt());
+            return X_transformed;
+        }).arraySync();
+    }
+
+    serialize() {
+        return utils.serializeObjPublicProps(this);
+    }
+
+    static deserialize(json) {
+        return utils.deserializeFromPublicProps(FastPCA, json);
+    }
+
+}
 
 class IncrementalPCA {
     /* Incremental principal components analysis (IPCA).
@@ -348,7 +450,7 @@ class IncrementalPCA {
                 const mean_correction = tf.sqrt(tf.mul(self.n_samples_seen_, n_samples / n_total_samples)).mul(self.mean_.sub(col_batch_mean));
                 X = tf.concat([self.singular_values_.reshape([-1, 1]).mul(self.components_), X, mean_correction.reshape([1, -1])], 0);
             }
-            let svd = new SingularValueDecomposition(new Matrix(X.arraySync()), {autoTranspose: true});
+            let svd = new SingularValueDecomposition(new Matrix(X.arraySync()), { autoTranspose: true });
             let u = svd.leftSingularVectors.to2DArray();
             let v = svd.rightSingularVectors.to2DArray();
             let q = svd.diagonal;
@@ -416,31 +518,15 @@ class IncrementalPCA {
     }
 
     serialize() {
-        const json = {};
-        for (let prop in this) {
-            let value, conversion;
-            if (this[prop].arraySync) {
-                value = this[prop].arraySync();
-                conversion = tensorConversion;
-            } else {
-                value = this[prop];
-            }
-            json[prop] = { value, conversion };
-        }
-        return json;
+        return utils.serializeObjPublicProps(this);
     }
 
     static deserialize(json) {
-        const self = new IncrementalPCA(json.n_components);
-        for (let prop in json) {
-            let { value, conversion } = json[prop];
-            if (conversion) value = conversions[conversion](value);
-            self[prop] = value;
-        }
-        return self;
+        return utils.deserializeFromPublicProps(IncrementalPCA, json);
     }
 }
 
 module.exports = {
     IncrementalPCA,
+    FastPCA,
 };
