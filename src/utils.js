@@ -1,3 +1,9 @@
+const tf = require("@tensorflow/tfjs-node");
+
+const tensorConversion = "tensor";
+const conversions = {
+    [tensorConversion]: tf.tensor
+};
 
 function serializeObjPublicProps(obj) {
     const json = {};

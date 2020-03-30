@@ -27,6 +27,13 @@ describe('Fast PCA', function () {
         chai.expect(X_transformed[2]).to.deep.equal(X_transformed[4]);
         chai.expect(X_transformed[3]).to.deep.equal(X_transformed[5]);
         chai.expect(X_transformed[0]).to.be.deep.not.equal(X_transformed[1]);
+
+        const serialized = JSON.parse(JSON.stringify(pca.serialize()));
+        const ipcaNew = IPCA.FastPCA.deserialize(serialized);
+        const X_transformed_new = ipcaNew.transform(X);
+        const l1_diff_tr = l1Norm(X_transformed, X_transformed_new);
+        chai.expect(l1_diff_tr).to.be.lessThan(0.01);
+
     });
 });
 

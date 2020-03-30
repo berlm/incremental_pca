@@ -90,10 +90,6 @@ function incremental_mean_and_var(X, last_mean, last_variance, last_sample_count
     });
 }
 
-const tensorConversion = "tensor";
-const conversions = {
-    [tensorConversion]: tf.tensor
-};
 
 /* Implementation based on https://link.springer.com/chapter/10.1007/978-3-540-45080-1_122 */
 class FastPCA {
@@ -152,7 +148,7 @@ class FastPCA {
             for (let i = 0; i < k; i++) {
                 let v;
                 if (i < n) {
-                    const vp = this.components_[i];
+                    const vp = tf.tensor(this.components_[i]);
                     const part1 = vp.mul((n - 1 - l) / n);
                     const part2 = u.dot(u.transpose()).mul((l + 1) / n).mul(vp).div(vp.norm('euclidean'));
                     v = part1.add(part2);
@@ -165,9 +161,9 @@ class FastPCA {
                     v = tf.zeros(u.shape);
                 }
                 if (this.components_.length <= i) {
-                    this.components_.push(v);
+                    this.components_.push(v.arraySync());
                 } else {
-                    this.components_[i] = v;
+                    this.components_[i] = v.arraySync();
                 }
             }
             this.n_samples_seen_++;
@@ -180,7 +176,7 @@ class FastPCA {
             X = tf.tensor(X);
 
             if (this.mean_ !== undefined) X = X.sub(this.mean_);
-            let X_transformed = X.dot(tf.tensor(this.components_.map(x => x.arraySync())).reshape([this.n_components, -1]).transpose());
+            let X_transformed = X.dot(tf.tensor(this.components_).reshape([this.n_components, -1]).transpose());
             // if (this.whiten) X_transformed = X_transformed.div(this.var_.sqrt());
             return X_transformed;
         }).arraySync();
